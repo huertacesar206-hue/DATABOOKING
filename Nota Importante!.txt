@@ -1,3 +1,0 @@
-Si se quiere agregar libros funcionales:
-1. Utiliza el administrador y súbelo de manera normal
-2. Sube el PDF a la carpeta de libro_pdf para que asi aparezca la portada y se permita utilizar el botón de ver y descargar
