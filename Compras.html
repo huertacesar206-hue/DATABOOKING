@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Compras - DataBooking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="Estilos.css">
+</head>
+<body>
+    <header class="digital-header d-flex justify-content-between align-items-center">
+        <div class="tech-deco"></div>
+        <div class="datetime-display">
+            <div id="current-date" class="fs-6"></div>
+            <div id="current-time" class="time-text">--:--</div>
+        </div>
+    </header>
+
+    <nav class="navbar navbar-expand-lg custom-navbar px-4">
+        <div class="container-fluid">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon" style="filter: invert(1);"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav gap-3">
+                    <li class="nav-item"><a class="nav-link" href="Index.html">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Categorias.html">Categorías</a></li>
+                    <li class="nav-item"><a class="nav-link text-white text-decoration-underline" href="Compras.html">Compras</a></li>
+                    <li class="nav-item" id="nav-admin" style="display: none;"><a class="nav-link color-admin" href="admin.html">Administrador</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Usuario.html">Mi Perfil</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid descargas-container mb-5" id="contenedor-principal"></main>
+
+    <footer class="simple-footer">
+        <div class="container">
+            <strong style="color: white;">Data<span class="color-acento">Booking</span></strong>
+            <p class="mb-0">© 2026 Tu biblioteca digital para programadores.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="db.js"></script>
+    <script>
+        const updateTime = () => { const now = new Date(); document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); let h = now.getHours(), m = now.getMinutes(); document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m'); };
+        updateTime(); setInterval(updateTime, 1000);
+        if (localStorage.getItem('rol') === 'admin') document.getElementById('nav-admin').style.display = 'block';
+
+        const idUsuario = localStorage.getItem('usuario_id');
+        const compras = JSON.parse(localStorage.getItem('compras')) || [];
+        const libros = JSON.parse(localStorage.getItem('libros')) || [];
+        
+        const misLibros = compras
+            .filter(c => c.id_usuario === idUsuario)
+            .map(c => {
+                const libroData = libros.find(l => l.id === parseInt(c.id_libro));
+                return { ...libroData, fecha_compra: c.fecha_compra };
+            })
+            .filter(l => l.id) 
+            .sort((a, b) => new Date(b.fecha_compra) - new Date(a.fecha_compra));
+
+        const contenedor = document.getElementById('contenedor-principal');
+
+        if (misLibros.length > 0) {
+            let html = '<div class="row row-cols-2 row-cols-md-4 row-cols-lg-6 g-4">';
+            misLibros.forEach(libro => {
+                const tituloCorto = libro.titulo.length > 15 ? libro.titulo.substring(0, 15) + '...' : libro.titulo;
+                const pdfData = libro.archivo_pdf ? `libros_pdf/${libro.archivo_pdf}` : '';
+                const fechaFormat = new Date(libro.fecha_compra).toLocaleDateString("es-ES");
+
+                html += `
+                    <div class="col">
+                        <a href="Libro.html?id=${libro.id}" class="book-link">
+                            <div class="book-card card-compra">
+                                <div class="book-image-placeholder" data-pdf="${pdfData}">
+                                    <canvas class="pdf-canvas"></canvas>
+                                    <div class="placeholder-text" style="z-index: 1; font-size: 0.8rem;">
+                                        ${libro.titulo.substring(0, 10).toUpperCase()}
+                                    </div>
+                                </div>
+                                <div class="book-title-bar">
+                                    ${tituloCorto}
+                                    <span class="fecha-descarga text-info mt-1 d-block" style="font-size: 0.7rem;">
+                                        Comprado el:<br>${fechaFormat}
+                                    </span>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            contenedor.innerHTML = html;
+        } else {
+            contenedor.innerHTML = `
+                <div class="text-center py-5">
+                    <i class="bi bi-cart-x" style="font-size: 4rem; color: #172643;"></i>
+                    <p class="text-secondary fs-5 mt-3">Aún no has comprado ningún libro.</p>
+                    <a href="Index.html" class="btn btn-outline-info mt-3">Explorar Catálogo</a>
+                </div>
+            `;
+        }
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        document.querySelectorAll('.book-image-placeholder').forEach(c => {
+            const url = c.dataset.pdf, canvas = c.querySelector('.pdf-canvas'), txt = c.querySelector('.placeholder-text');
+            if (url?.trim()) {
+                pdfjsLib.getDocument(url).promise.then(pdf => pdf.getPage(1)).then(page => {
+                    const vp = page.getViewport({scale: 0.4}), ctx = canvas.getContext('2d');
+                    canvas.height = vp.height; canvas.width = vp.width;
+                    page.render({canvasContext: ctx, viewport: vp}).promise.then(() => {
+                        canvas.style.display = 'block'; if(txt) txt.style.display = 'none';
+                    });
+                }).catch(() => {});
+            }
+        });
+    </script>
+</body>
+</html>
