@@ -114,7 +114,7 @@
         const idUsuario = localStorage.getItem('usuario_id');
         const compras = JSON.parse(localStorage.getItem('compras')) || [];
 
-        if (!libro) { window.location.href = 'Index.html'; }
+        if (!libro) { window.location.href = 'index.html'; }
         else if (compras.some(c => c.id_usuario === idUsuario && parseInt(c.id_libro) === libro.id)) {
             alert('Ya posees este libro.'); window.location.href = 'Compras.html';
         } else {
