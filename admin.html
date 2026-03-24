@@ -1,0 +1,234 @@
+<?php
+session_start();
+if (empty($_SESSION['usuario_id']) || $_SESSION['rol'] !== 'admin') { header("Location: Index.php"); exit; }
+
+$conn = new mysqli("localhost", "root", "", "databooking");
+
+if (isset($_POST['eliminar_libro'])) {
+    $id_borrar = intval($_POST['id_libro']);
+    
+    $stmt_pdf = $conn->prepare("SELECT archivo_pdf FROM libros WHERE id = ?");
+    $stmt_pdf->bind_param("i", $id_borrar);
+    $stmt_pdf->execute();
+    $pdf_a_borrar = $stmt_pdf->get_result()->fetch_assoc()['archivo_pdf'] ?? '';
+
+    $stmt_compras = $conn->prepare("DELETE FROM compras WHERE id_libro = ?");
+    $stmt_compras->bind_param("i", $id_borrar);
+    $stmt_compras->execute();
+
+    $stmt_favs = $conn->prepare("DELETE FROM favoritos WHERE id_libro = ?");
+    $stmt_favs->bind_param("i", $id_borrar);
+    $stmt_favs->execute();
+
+    $stmt = $conn->prepare("DELETE FROM libros WHERE id = ?");
+    $stmt->bind_param("i", $id_borrar);
+    
+    if ($stmt->execute()) {
+        if ($pdf_a_borrar && file_exists("libros_pdf/$pdf_a_borrar")) {
+            unlink("libros_pdf/$pdf_a_borrar");
+        }
+        echo "<script>alert('Libro eliminado correctamente del catálogo y de las bibliotecas de los usuarios.'); window.location.href='admin.php';</script>";
+    } else {
+        echo "<script>alert('Error al eliminar el libro.'); window.history.back();</script>";
+    }
+    exit;
+}
+
+if (isset($_POST['actualizar'])) {
+    $p = max(0, floatval($_POST['precio'] ?: 0.00));
+    $id_libro = intval($_POST['id_libro_oculto']);
+
+    $stmt_old = $conn->prepare("SELECT archivo_pdf FROM libros WHERE id = ?");
+    $stmt_old->bind_param("i", $id_libro);
+    $stmt_old->execute();
+    $pdf_final = $stmt_old->get_result()->fetch_assoc()['archivo_pdf'] ?? '';
+
+    if (isset($_FILES['archivo_pdf']) && $_FILES['archivo_pdf']['error'] === UPLOAD_ERR_OK) {
+        $ext = strtolower(pathinfo($_FILES['archivo_pdf']['name'], PATHINFO_EXTENSION));
+        $mime = mime_content_type($_FILES['archivo_pdf']['tmp_name']);
+
+        if ($ext === 'pdf' && $mime === 'application/pdf') {
+            is_dir('libros_pdf') ?: mkdir('libros_pdf', 0777, true);
+            $nuevo_pdf = uniqid('pdf_') . '.pdf';
+            
+            if (move_uploaded_file($_FILES['archivo_pdf']['tmp_name'], "libros_pdf/$nuevo_pdf")) {
+                if ($pdf_final && file_exists("libros_pdf/$pdf_final")) {
+                    unlink("libros_pdf/$pdf_final");
+                }
+                $pdf_final = $nuevo_pdf;
+            }
+        } else {
+            echo "<script>alert('Error: Solo se permiten archivos PDF válidos.'); window.history.back();</script>"; exit;
+        }
+    }
+
+    $stmt = $conn->prepare("UPDATE libros SET identificador=?, titulo=?, autor=?, categoria=?, descripcion=?, precio=?, archivo_pdf=? WHERE id=?");
+    $stmt->bind_param("sssssdsi", $_POST['identificador'], $_POST['titulo'], $_POST['autor'], $_POST['categoria'], $_POST['descripcion'], $p, $pdf_final, $id_libro);
+    
+    if ($stmt->execute()) echo "<script>alert('¡Libro actualizado con éxito!'); window.location.href='admin.php';</script>";
+    else echo "<script>alert('Error interno al actualizar.'); window.history.back();</script>";
+    exit;
+}
+
+if (isset($_POST['guardar'])) {
+    $p = max(0, floatval($_POST['precio'] ?: 0.00));
+    $pdf = "";
+    
+    if (isset($_FILES['archivo_pdf']) && $_FILES['archivo_pdf']['error'] === UPLOAD_ERR_OK) {
+        $ext = strtolower(pathinfo($_FILES['archivo_pdf']['name'], PATHINFO_EXTENSION));
+        $mime = mime_content_type($_FILES['archivo_pdf']['tmp_name']);
+
+        if ($ext === 'pdf' && $mime === 'application/pdf') {
+            is_dir('libros_pdf') ?: mkdir('libros_pdf', 0777, true);
+            $pdf = uniqid('pdf_') . '.pdf';
+            move_uploaded_file($_FILES['archivo_pdf']['tmp_name'], "libros_pdf/$pdf");
+        } else {
+            echo "<script>alert('Error: El archivo debe ser un PDF válido.'); window.history.back();</script>"; exit;
+        }
+    }
+
+    $stmt = $conn->prepare("INSERT INTO libros (identificador, titulo, autor, categoria, descripcion, precio, archivo_pdf) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("sssssds", $_POST['identificador'], $_POST['titulo'], $_POST['autor'], $_POST['categoria'], $_POST['descripcion'], $p, $pdf);
+    
+    if ($stmt->execute()) echo "<script>alert('¡Libro subido con éxito!'); window.location.href='admin.php';</script>";
+    else echo "<script>alert('Error interno al guardar en base de datos.'); window.history.back();</script>";
+    exit;
+}
+
+$libro_a_editar = null;
+if (isset($_GET['editar'])) {
+    $stmt = $conn->prepare("SELECT * FROM libros WHERE id = ?");
+    $stmt->bind_param("i", $_GET['editar']);
+    $stmt->execute();
+    $libro_a_editar = $stmt->get_result()->fetch_assoc();
+}
+
+function obtenerColorCategoria($c) {
+    $cols = ['python'=>'bg-warning text-dark','java'=>'bg-danger','javascript'=>'bg-info text-dark','sql'=>'bg-primary','html'=>'bg-secondary','ruby'=>'bg-danger'];
+    return $cols[$c] ?? 'bg-dark border';
+}
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel Administrador - DataBooking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="Estilos.css?v=<?= time() ?>">
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-8 admin-card shadow">
+                <h2 class="text-center mb-4 text-warning"><?= $libro_a_editar ? "Editando Libro" : "Añadir Nuevo Libro" ?></h2>
+                
+                <form method="POST" action="admin.php" enctype="multipart/form-data">
+                    <?php if($libro_a_editar): ?>
+                        <input type="hidden" name="id_libro_oculto" value="<?= $libro_a_editar['id'] ?>">
+                    <?php endif; ?>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">ID Único</label>
+                            <input type="number" name="identificador" class="form-control" required value="<?= htmlspecialchars($libro_a_editar['identificador'] ?? '') ?>">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Categoría / Lenguaje</label>
+                            <select name="categoria" class="form-select" required>
+                                <?php $cat = $libro_a_editar['categoria'] ?? ''; ?>
+                                <option value="" disabled <?= !$cat ? 'selected' : '' ?>>Selecciona lenguaje...</option>
+                                <option value="python" <?= $cat == 'python' ? 'selected' : '' ?>>Python</option>
+                                <option value="c" <?= $cat == 'c' ? 'selected' : '' ?>>C</option>
+                                <option value="cplusplus" <?= $cat == 'cplusplus' ? 'selected' : '' ?>>C++</option>
+                                <option value="javascript" <?= $cat == 'javascript' ? 'selected' : '' ?>>JavaScript</option>
+                                <option value="java" <?= $cat == 'java' ? 'selected' : '' ?>>Java</option>
+                                <option value="html" <?= $cat == 'html' ? 'selected' : '' ?>>HTML5</option>
+                                <option value="ruby" <?= $cat == 'ruby' ? 'selected' : '' ?>>Ruby</option>
+                                <option value="sql" <?= $cat == 'sql' ? 'selected' : '' ?>>SQL Server</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Título del Libro</label>
+                        <input type="text" name="titulo" class="form-control" required value="<?= htmlspecialchars($libro_a_editar['titulo'] ?? '') ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Autor</label>
+                        <input type="text" name="autor" class="form-control" required value="<?= htmlspecialchars($libro_a_editar['autor'] ?? '') ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Descripción</label>
+                        <textarea name="descripcion" class="form-control" rows="3" required><?= htmlspecialchars($libro_a_editar['descripcion'] ?? '') ?></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Precio ($)</label>
+                        <input type="number" step="0.01" name="precio" class="form-control" value="<?= htmlspecialchars($libro_a_editar['precio'] ?? '') ?>">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label text-info">Archivo PDF</label>
+                        <input type="file" name="archivo_pdf" class="form-control" accept="application/pdf" <?= !$libro_a_editar ? 'required' : '' ?>>
+                    </div>
+
+                    <?php if($libro_a_editar): ?>
+                        <button type="submit" name="actualizar" class="btn btn-warning btn-add text-dark">Guardar Cambios</button>
+                        <a href="admin.php" class="btn btn-secondary w-100 mt-2">Cancelar Edición</a>
+                    <?php else: ?>
+                        <button type="submit" name="guardar" class="btn btn-primary btn-add">Subir a la Base de Datos</button>
+                    <?php endif; ?>
+                </form>
+                
+                <div class="text-center mt-4">
+                    <a href="Index.php" class="text-info text-decoration-underline">Volver al Inicio</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12 tabla-contenedor shadow">
+                <h3 class="mb-4 text-center"> ======== Libros en el Catálogo ======== </h3>
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th><th>Categoría</th><th>Título</th><th>Autor</th><th>Precio</th><th>PDF</th><th class="text-center">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $res = $conn->query("SELECT * FROM libros ORDER BY id DESC");
+                            if ($res->num_rows > 0): 
+                                while($l = $res->fetch_assoc()): 
+                                    $cb = obtenerColorCategoria($l['categoria']);
+                            ?>
+                                <tr>
+                                    <td><?= $l['id'] ?></td>
+                                    <td><span class="badge <?= $cb ?>"><?= strtoupper(htmlspecialchars($l['categoria'])) ?></span></td>
+                                    <td><?= htmlspecialchars($l['titulo']) ?></td>
+                                    <td><?= htmlspecialchars($l['autor']) ?></td>
+                                    <td>$<?= number_format($l['precio'], 2) ?></td>
+                                    <td><?= !empty($l['archivo_pdf']) ? 'Listo!' : 'No Existe' ?></td>
+                                    <td class="text-center">
+                                        <a href="admin.php?editar=<?= $l['id'] ?>" class="btn btn-warning btn-sm me-2">Editar</a>
+                                        <form method="POST" style="display:inline;">
+                                            <input type="hidden" name="id_libro" value="<?= $l['id'] ?>">
+                                            <button type="submit" name="eliminar_libro" class="btn btn-danger btn-sm" onclick="return confirm('¿Borrar libro?');">Eliminar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php 
+                                endwhile; 
+                            else: 
+                            ?>
+                                <tr><td colspan='7' class='text-center py-4'>No hay libros registrados.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

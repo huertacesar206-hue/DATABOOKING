@@ -1,0 +1,154 @@
+<?php
+session_start();
+$id_libro = $_GET['id'] ?? '';
+if (!$id_libro) { header("Location: Index.php"); exit; }
+
+$conn = new mysqli("localhost", "root", "", "databooking");
+$stmt = $conn->prepare("SELECT * FROM libros WHERE id = ?");
+$stmt->bind_param("i", $id_libro);
+$stmt->execute();
+$libro = $stmt->get_result()->fetch_assoc();
+
+if (!$libro) { echo "<script>alert('El libro no existe.'); window.location.href='Index.php';</script>"; exit; }
+
+$id_u = $_SESSION['usuario_id'] ?? 0;
+$ya_comprado = $es_favorito = false;
+
+if ($id_u) {
+    $stmt = $conn->prepare("SELECT 1 FROM compras WHERE id_usuario = ? AND id_libro = ?");
+    $stmt->bind_param("ii", $id_u, $id_libro);
+    $stmt->execute();
+    $ya_comprado = $stmt->get_result()->num_rows > 0;
+
+    $stmt = $conn->prepare("SELECT 1 FROM favoritos WHERE id_usuario = ? AND id_libro = ?");
+    $stmt->bind_param("ii", $id_u, $id_libro);
+    $stmt->execute();
+    $es_favorito = $stmt->get_result()->num_rows > 0;
+}
+$tiene_acceso = ($libro['precio'] <= 0 || $ya_comprado);
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= htmlspecialchars($libro['titulo']) ?> - DataBooking</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="Estilos.css?v=<?= time() ?>">
+</head>
+<body>
+
+    <header class="digital-header d-flex justify-content-between align-items-center">
+        <div class="tech-deco"></div>
+        <div class="datetime-display">
+            <div id="current-date" class="fs-6">Cargando fecha...</div>
+            <div id="current-time" class="time-text">--:--</div>
+        </div>
+    </header>
+
+    <nav class="navbar navbar-expand-lg custom-navbar">
+        <div class="container-fluid justify-content-end">
+            <ul class="navbar-nav align-items-center">
+                <li class="nav-item"><a class="nav-link" href="Index.php">Inicio</a></li>
+                <li class="nav-item"><a class="nav-link" href="Categorias.php">Categorías</a></li>
+                <li class="nav-item"><a class="nav-link" href="Compras.php">Compras</a></li>
+                <li class="nav-item"><a class="nav-link" href="Usuario.php">Mi Perfil</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container libro-container">
+        <div class="row">
+            <div class="col-md-5 d-flex justify-content-center mb-5 mb-md-0">
+                <div class="portada-grande" id="portada-container" data-pdf="<?= !empty($libro['archivo_pdf']) ? 'libros_pdf/' . $libro['archivo_pdf'] : '' ?>">
+                    <canvas id="canvas-portada-grande" class="pdf-canvas-grande"></canvas>
+                    <div class="placeholder-text-grande" id="texto-portada-grande">
+                        <small class="d-block text-info" style="font-size: 0.8rem;">DATABOOKING</small>
+                        <?= htmlspecialchars(strtoupper($libro['titulo'])) ?>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-7 info-libro">
+                <div class="d-flex align-items-center mb-2">
+                    <h1><?= htmlspecialchars($libro['titulo']) ?></h1>
+                    <?php if($id_u): ?>
+                        <i class="bi <?= $es_favorito ? 'bi-heart-fill' : 'bi-heart' ?> btn-fav ms-4" id="heart-fav" data-id="<?= $libro['id'] ?>"></i>
+                    <?php endif; ?>
+                </div>
+                
+                <div class="autor-text">Por: <?= htmlspecialchars($libro['autor']) ?></div>
+                <div class="badge-cat">Lenguaje: <?= strtoupper(htmlspecialchars($libro['categoria'])) ?></div>
+
+                <div class="descripcion-caja">
+                    <h5 class="text-info mb-3">Descripción:</h5>
+                    <p><?= nl2br(htmlspecialchars($libro['descripcion'])) ?></p>
+                </div>
+
+                <div class="precio-text">
+                    <?= $libro['precio'] > 0 ? "$" . number_format($libro['precio'], 2) : "¡GRATIS!" ?>
+                </div>
+
+                <div class="acciones d-flex gap-4">
+                    <?php if($libro['precio'] > 0 && !$ya_comprado): ?>
+                        <a href="Formulario.php?id=<?= $libro['id'] ?>" class="btn-comprar shadow text-decoration-none">Comprar ahora</a>
+                    <?php endif; ?>
+
+                    <?php if(!empty($libro['archivo_pdf'])): ?>
+                        <?php if($tiene_acceso): ?>
+                            <a href="libros_pdf/<?= $libro['archivo_pdf'] ?>" target="_blank" class="btn-leer shadow">Leer</a>
+                            <a href="libros_pdf/<?= $libro['archivo_pdf'] ?>" download data-id="<?= $libro['id'] ?>" class="btn-descargar shadow btn-registrar-descarga">Descargar</a>
+                        <?php else: ?>
+                            <button class="btn-bloqueado shadow" onclick="alert('Debes comprar este libro para acceder al PDF.');">
+                                <i class="bi bi-lock-fill"></i> Bloqueado
+                            </button>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="simple-footer">
+        <div class="container">
+            <strong style="color: white;">Data<span class="color-acento">Booking</span></strong>
+            <p class="mb-0">© 2026 Tu biblioteca digital para programadores.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        const updateTime = () => {
+            const now = new Date();
+            document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); 
+            let h = now.getHours(), m = now.getMinutes();
+            document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m');
+        };
+        updateTime(); setInterval(updateTime, 1000);
+
+        const heartBtn = document.getElementById('heart-fav');
+        if (heartBtn) {
+            heartBtn.addEventListener('click', function() {
+                const acc = this.classList.contains('bi-heart-fill') ? 'quitar' : 'agregar';
+                this.classList.toggle('bi-heart'); this.classList.toggle('bi-heart-fill');
+                fetch('guardar_favorito.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ libro_id: this.dataset.id, accion: acc }) });
+            });
+        }
+
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        const url = document.getElementById('portada-container').dataset.pdf;
+        if (url) {
+            pdfjsLib.getDocument(url).promise.then(pdf => pdf.getPage(1)).then(page => {
+                const canvas = document.getElementById('canvas-portada-grande'), vp = page.getViewport({scale: 1.5});
+                canvas.height = vp.height; canvas.width = vp.width;
+                page.render({canvasContext: canvas.getContext('2d'), viewport: vp}).promise.then(() => {
+                    canvas.style.display = 'block'; document.getElementById('texto-portada-grande').style.display = 'none';
+                });
+            });
+        }
+    </script>
+</body>
+</html>
