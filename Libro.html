@@ -124,7 +124,7 @@
             document.getElementById('heart-fav').addEventListener('click', function() {
                 const icon = this;
                 const favs = JSON.parse(localStorage.getItem('favoritos')) || [];
-                const index = favs.findIndex(f => f.id_usuario === idUsuario && parseInt(f.id_libro) === libro.id);
+                const index = favs.findindex(f => f.id_usuario === idUsuario && parseInt(f.id_libro) === libro.id);
 
                 if (index > -1) {
                     favs.splice(index, 1);
