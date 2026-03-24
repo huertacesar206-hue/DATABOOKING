@@ -1,55 +1,19 @@
-<?php
-session_start();
-if (empty($_SESSION['usuario_id'])) { header("Location: login.php"); exit; }
-
-$conn = new mysqli("localhost", "root", "", "databooking");
-$id_u = $_SESSION['usuario_id'];
-$error = "";
-
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['procesar_pago'])) {
-    $stmt = $conn->prepare("INSERT INTO compras (id_usuario, id_libro) VALUES (?, ?)");
-    $stmt->bind_param("ii", $id_u, $_POST['id_libro']);
-    if ($stmt->execute()) {
-        echo "<script>alert('¡Pago procesado con éxito! El libro ha sido añadido a tus Compras.'); window.location.href='Compras.php';</script>"; exit;
-    } else {
-        $error = "Hubo un error al procesar tu compra. Inténtalo de nuevo.";
-    }
-}
-
-$id_libro_get = $_GET['id'] ?? '';
-if (!$id_libro_get) { header("Location: Index.php"); exit; }
-
-$stmt = $conn->prepare("SELECT * FROM libros WHERE id = ?");
-$stmt->bind_param("i", $id_libro_get);
-$stmt->execute();
-$libro = $stmt->get_result()->fetch_assoc();
-
-if (!$libro) { header("Location: Index.php"); exit; }
-
-$stmt = $conn->prepare("SELECT 1 FROM compras WHERE id_usuario = ? AND id_libro = ?");
-$stmt->bind_param("ii", $id_u, $id_libro_get);
-$stmt->execute();
-if ($stmt->get_result()->num_rows > 0) {
-    echo "<script>alert('Ya posees este libro.'); window.location.href='Compras.php';</script>"; exit;
-}
-?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comprar <?= htmlspecialchars($libro['titulo']) ?> - DataBooking</title>
+    <title>Comprar - DataBooking</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="Estilos.css">
 </head>
 <body>
-
     <header class="digital-header d-flex justify-content-between align-items-center">
         <div class="tech-deco"></div>
         <div class="datetime-display">
-            <div id="current-date" class="fs-6">Cargando fecha...</div>
+            <div id="current-date" class="fs-6"></div>
             <div id="current-time" class="time-text">--:--</div>
         </div>
     </header>
@@ -61,37 +25,36 @@ if ($stmt->get_result()->num_rows > 0) {
             </button>
             <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
                 <ul class="navbar-nav gap-3">
-                    <li class="nav-item"><a class="nav-link" href="Index.php">Inicio</a></li>
-                    <li class="nav-item"><a class="nav-link" href="Categorias.php">Categorías</a></li>
-                    <li class="nav-item"><a class="nav-link" href="Compras.php">Compras</a></li>
-                    <li class="nav-item"><a class="nav-link" href="Usuario.php">Mi Perfil</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Index.html">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Categorias.html">Categorías</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Compras.html">Compras</a></li>
+                    <li class="nav-item" id="nav-admin" style="display: none;"><a class="nav-link color-admin" href="admin.html">Administrador</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Usuario.html">Mi Perfil</a></li>
                 </ul>
             </div>
         </div>
     </nav>
 
-    <main class="container pago-container mt-5 mb-5">
+    <main class="container pago-container mt-5 mb-5" id="contenido-pago" style="display: none;">
         <h2 class="titulo-seccion text-center mb-5"><i class="bi bi-credit-card-fill"></i> Pasarela de Pago</h2>
         
-        <?php if($error): ?><div class="alert alert-danger text-center"><?= $error ?></div><?php endif; ?>
-
         <div class="row justify-content-center">
             <div class="col-md-5 mb-4">
                 <div class="pago-card p-4">
                     <h4 class="text-info border-bottom border-secondary pb-2 mb-4">Resumen del Pedido</h4>
                     <div class="d-flex align-items-center mb-3">
-                        <div class="book-image-placeholder me-3" style="width: 80px; height: 110px;" data-pdf="<?= !empty($libro['archivo_pdf']) ? 'libros_pdf/' . $libro['archivo_pdf'] : '' ?>">
+                        <div class="book-image-placeholder me-3" id="portada-pago" style="width: 80px; height: 110px;">
                             <canvas class="pdf-canvas"></canvas>
                         </div>
                         <div>
-                            <h5><?= htmlspecialchars($libro['titulo']) ?></h5>
-                            <p class="text-secondary mb-1">Autor: <?= htmlspecialchars($libro['autor']) ?></p>
-                            <span class="badge bg-secondary"><?= strtoupper($libro['categoria']) ?></span>
+                            <h5 id="pago-titulo"></h5>
+                            <p class="text-secondary mb-1" id="pago-autor"></p>
+                            <span class="badge bg-secondary" id="pago-categoria"></span>
                         </div>
                     </div>
                     <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top border-secondary">
                         <span class="fs-5">Total a pagar:</span>
-                        <span class="fs-3 font-weight-bold color-acento">$<?= number_format($libro['precio'], 2) ?></span>
+                        <span class="fs-3 font-weight-bold color-acento" id="pago-precio"></span>
                     </div>
                 </div>
             </div>
@@ -99,9 +62,7 @@ if ($stmt->get_result()->num_rows > 0) {
             <div class="col-md-5">
                 <div class="pago-card p-4">
                     <h4 class="text-info border-bottom border-secondary pb-2 mb-4">Datos de la Tarjeta</h4>
-                    <form method="POST">
-                        <input type="hidden" name="id_libro" value="<?= $libro['id'] ?>">
-                        
+                    <form id="form-pago">
                         <div class="mb-3">
                             <label class="form-label">Nombre en la tarjeta</label>
                             <input type="text" class="form-control" placeholder="EJ. JUAN PEREZ" required>
@@ -110,24 +71,21 @@ if ($stmt->get_result()->num_rows > 0) {
                             <label class="form-label">Número de Tarjeta</label>
                             <div class="input-group">
                                 <span class="input-group-text bg-dark text-white border-secondary"><i class="bi bi-credit-card"></i></span>
-                                <input type="text" inputmode="numeric" pattern="\d{16}" title="Debe contener exactamente 16 números" class="form-control" placeholder="0000000000000000" maxlength="16" required oninput="this.value = this.value.replace(/\D/g, '')">
+                                <input type="text" inputmode="numeric" pattern="\\d{16}" title="16 números" class="form-control" placeholder="0000000000000000" maxlength="16" required oninput="this.value = this.value.replace(/\\D/g, '')">
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-6 mb-3">
                                 <label class="form-label">Vencimiento</label>
-                                <input type="text" inputmode="numeric" pattern="\d{2}/\d{2}" title="Formato MM/AA" class="form-control" placeholder="MM/AA" maxlength="5" required oninput="let v=this.value.replace(/\D/g,'');this.value=(v.length>2?v.slice(0,2)+'/'+v.slice(2,4):v);">
+                                <input type="text" inputmode="numeric" pattern="\\d{2}/\\d{2}" title="Formato MM/AA" class="form-control" placeholder="MM/AA" maxlength="5" required oninput="let v=this.value.replace(/\\D/g,'');this.value=(v.length>2?v.slice(0,2)+'/'+v.slice(2,4):v);">
                             </div>
                             <div class="col-6 mb-3">
                                 <label class="form-label">CVV</label>
-                                <input type="password" inputmode="numeric" pattern="\d{3}" title="Debe contener exactamente 3 números" class="form-control" placeholder="123" maxlength="3" required oninput="this.value = this.value.replace(/\D/g, '')">
+                                <input type="password" inputmode="numeric" pattern="\\d{3}" title="3 números" class="form-control" placeholder="123" maxlength="3" required oninput="this.value = this.value.replace(/\\D/g, '')">
                             </div>
                         </div>
-                        
-                        <button type="submit" name="procesar_pago" class="btn btn-pagar w-100 mt-3 shadow">
-                            <i class="bi bi-lock-fill"></i> Pagar Seguro $<?= number_format($libro['precio'], 2) ?>
-                        </button>
-                        <p class="text-center text-secondary mt-3" style="font-size: 0.8rem;">Transacción encriptada de extremo a extremo.</p>
+                        <button type="submit" class="btn btn-pagar w-100 mt-3 shadow" id="btn-submit-pago"></button>
+                        <p class="text-center text-secondary mt-3" style="font-size: 0.8rem;">Transacción simulada de forma segura.</p>
                     </form>
                 </div>
             </div>
@@ -143,26 +101,56 @@ if ($stmt->get_result()->num_rows > 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="db.js"></script>
     <script>
-        const updateTime = () => {
-            const now = new Date();
-            document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); 
-            let h = now.getHours(), m = now.getMinutes();
-            document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m');
-        };
+        const updateTime = () => { const now = new Date(); document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); let h = now.getHours(), m = now.getMinutes(); document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m'); };
         updateTime(); setInterval(updateTime, 1000);
+        if (localStorage.getItem('rol') === 'admin') document.getElementById('nav-admin').style.display = 'block';
 
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        document.querySelectorAll('.book-image-placeholder').forEach(c => {
-            const url = c.dataset.pdf, canvas = c.querySelector('.pdf-canvas');
-            if (url?.trim()) {
-                pdfjsLib.getDocument(url).promise.then(pdf => pdf.getPage(1)).then(page => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const idLibro = parseInt(urlParams.get('id'));
+        const libros = JSON.parse(localStorage.getItem('libros')) || [];
+        const libro = libros.find(l => l.id === idLibro);
+        const idUsuario = localStorage.getItem('usuario_id');
+        const compras = JSON.parse(localStorage.getItem('compras')) || [];
+
+        if (!libro) { window.location.href = 'Index.html'; }
+        else if (compras.some(c => c.id_usuario === idUsuario && parseInt(c.id_libro) === libro.id)) {
+            alert('Ya posees este libro.'); window.location.href = 'Compras.html';
+        } else {
+            document.title = `Comprar ${libro.titulo} - DataBooking`;
+            document.getElementById('pago-titulo').innerText = libro.titulo;
+            document.getElementById('pago-autor').innerText = `Autor: ${libro.autor}`;
+            document.getElementById('pago-categoria').innerText = libro.categoria.toUpperCase();
+            document.getElementById('pago-precio').innerText = `$${libro.precio.toFixed(2)}`;
+            document.getElementById('btn-submit-pago').innerHTML = `<i class="bi bi-lock-fill"></i> Pagar Seguro $${libro.precio.toFixed(2)}`;
+            
+            const pdfData = libro.archivo_pdf ? `libros_pdf/${libro.archivo_pdf}` : '';
+            document.getElementById('portada-pago').setAttribute('data-pdf', pdfData);
+            document.getElementById('contenido-pago').style.display = 'block';
+
+            document.getElementById('form-pago').addEventListener('submit', function(e) {
+                e.preventDefault();
+                compras.push({
+                    id_usuario: idUsuario,
+                    id_libro: libro.id,
+                    fecha_compra: new Date().toISOString()
+                });
+                localStorage.setItem('compras', JSON.stringify(compras));
+                alert('¡Pago procesado con éxito! El libro ha sido añadido a tus Compras.');
+                window.location.href = 'Compras.html';
+            });
+
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+            if (pdfData) {
+                const canvas = document.querySelector('.pdf-canvas');
+                pdfjsLib.getDocument(pdfData).promise.then(pdf => pdf.getPage(1)).then(page => {
                     const vp = page.getViewport({scale: 0.3}), ctx = canvas.getContext('2d');
                     canvas.height = vp.height; canvas.width = vp.width;
                     page.render({canvasContext: ctx, viewport: vp}).promise.then(() => canvas.style.display = 'block');
                 });
             }
-        });
+        }
     </script>
 </body>
 </html>

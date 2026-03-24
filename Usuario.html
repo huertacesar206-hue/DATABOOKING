@@ -1,40 +1,3 @@
-<?php
-session_start();
-if (!isset($_SESSION['usuario_id'])) { header("Location: login.php"); exit; }
-
-$conn = new mysqli("localhost", "root", "", "databooking");
-$id_u = $_SESSION['usuario_id'];
-
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST['actualizar_perfil'])) {
-    if (!empty($_POST['nuevo_nombre'])) {
-        $stmt = $conn->prepare("UPDATE usuarios SET nombre = ? WHERE id = ?");
-        $stmt->bind_param("si", $_POST['nuevo_nombre'], $id_u);
-        $stmt->execute();
-        $_SESSION['nombre'] = $_POST['nuevo_nombre'];
-    }
-
-    if (isset($_FILES['nueva_foto']) && $_FILES['nueva_foto']['error'] === UPLOAD_ERR_OK) {
-        is_dir('uploads') ?: mkdir('uploads', 0777, true);
-        $archivo = time() . "_" . basename($_FILES['nueva_foto']['name']);
-        if (move_uploaded_file($_FILES['nueva_foto']['tmp_name'], "uploads/$archivo")) {
-            $stmt = $conn->prepare("UPDATE usuarios SET foto_perfil = ? WHERE id = ?");
-            $stmt->bind_param("si", $archivo, $id_u);
-            $stmt->execute();
-        }
-    }
-    echo "<script>alert('¡Perfil actualizado con éxito!'); window.location.href='Usuario.php';</script>"; exit;
-}
-
-$stmt = $conn->prepare("SELECT nombre, username, foto_perfil FROM usuarios WHERE id = ?");
-$stmt->bind_param("i", $id_u);
-$stmt->execute();
-$user = $stmt->get_result()->fetch_assoc();
-
-$nombre = !empty($user['nombre']) ? $user['nombre'] : $user['username'];
-$foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png') 
-    ? "uploads/" . $user['foto_perfil'] 
-    : "https://ui-avatars.com/api/?name=" . urlencode($nombre) . "&background=0b101e&color=fff&size=200";
-?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -43,14 +6,13 @@ $foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png')
     <title>Mi Perfil - DataBooking</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="Estilos.css?v=<?= time() ?>">
+    <link rel="stylesheet" href="Estilos.css">
 </head>
 <body>
-
     <header class="digital-header d-flex justify-content-between align-items-center">
         <div class="tech-deco"></div>
         <div class="datetime-display">
-            <div id="current-date" class="fs-6">Cargando fecha...</div>
+            <div id="current-date" class="fs-6"></div>
             <div id="current-time" class="time-text">--:--</div>
         </div>
     </header>
@@ -62,13 +24,11 @@ $foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png')
             </button>
             <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
                 <ul class="navbar-nav gap-3">
-                    <li class="nav-item"><a class="nav-link" href="Index.php">Inicio</a></li>
-                    <li class="nav-item"><a class="nav-link" href="Categorias.php">Categorías</a></li>
-                    <li class="nav-item"><a class="nav-link" href="Compras.php">Compras</a></li>
-                    <?php if(isset($_SESSION['rol']) && $_SESSION['rol'] === 'admin'): ?>
-                        <li class="nav-item"><a class="nav-link color-admin" href="admin.php">Administrador</a></li>
-                    <?php endif; ?>
-                    <li class="nav-item"><a class="nav-link text-white text-decoration-underline" href="Usuario.php">Mi Perfil</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Index.html">Inicio</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Categorias.html">Categorías</a></li>
+                    <li class="nav-item"><a class="nav-link" href="Compras.html">Compras</a></li>
+                    <li class="nav-item" id="nav-admin" style="display: none;"><a class="nav-link color-admin" href="admin.html">Administrador</a></li>
+                    <li class="nav-item"><a class="nav-link text-white text-decoration-underline" href="Usuario.html">Mi Perfil</a></li>
                 </ul>
             </div>
         </div>
@@ -78,16 +38,14 @@ $foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png')
         <h2 class="titulo-usuario">Usuario</h2>
 
         <div class="perfil-wrapper">
-            <img src="<?= htmlspecialchars($foto) ?>" alt="Foto de Perfil" class="foto-perfil" id="imagenPerfil">
+            <img src="" alt="Foto de Perfil" class="foto-perfil" id="imagenPerfil">
             <div class="indicador-estado" id="botonEstado" title="Conectado"></div>
         </div>
 
-        <div class="nombre-usuario">
-            <?= htmlspecialchars($nombre) ?>
-        </div>
+        <div class="nombre-usuario" id="display-nombre"></div>
 
         <button class="btn-perfil btn-administrar" data-bs-toggle="modal" data-bs-target="#modalAdministrar">Administrar Perfil</button>
-        <button class="btn-perfil btn-cerrar" onclick="window.location.href='logout.php'">Cerrar Sesión</button>
+        <button class="btn-perfil btn-cerrar" onclick="window.location.href='logout.html'">Cerrar Sesión</button>
     </main>
 
     <div class="modal fade" id="modalAdministrar" tabindex="-1" aria-hidden="true">
@@ -97,20 +55,20 @@ $foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png')
                     <h5 class="modal-title">Editar Perfil</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <form method="POST" enctype="multipart/form-data">
+                <form id="form-perfil">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label class="form-label">Nombre a mostrar</label>
-                            <input type="text" class="form-control" name="nuevo_nombre" value="<?= htmlspecialchars($nombre) ?>" required>
+                            <input type="text" class="form-control" id="nuevo_nombre" required>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Foto de Perfil</label>
-                            <input type="file" class="form-control" name="nueva_foto" accept="image/*">
+                            <input type="file" class="form-control" id="nueva_foto" accept="image/*">
                         </div>
                     </div>
                     <div class="modal-footer border-secondary">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="submit" name="actualizar_perfil" class="btn btn-primary" style="background-color: #0b3b5b; border: none;">Guardar Cambios</button>
+                        <button type="submit" class="btn btn-primary" style="background-color: #0b3b5b; border: none;">Guardar Cambios</button>
                     </div>
                 </form>
             </div>
@@ -125,14 +83,52 @@ $foto = (!empty($user['foto_perfil']) && $user['foto_perfil'] !== 'default.png')
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="db.js"></script>
     <script>
-        const updateTime = () => {
-            const now = new Date();
-            document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); 
-            let h = now.getHours(), m = now.getMinutes();
-            document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m');
-        };
+        if (!localStorage.getItem('usuario_id')) window.location.href = 'login.html';
+
+        const updateTime = () => { const now = new Date(); document.getElementById('current-date').innerText = now.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }).replace(/ de /g, ' del '); let h = now.getHours(), m = now.getMinutes(); document.getElementById('current-time').innerText = (h % 12 || 12) + ':' + m.toString().padStart(2, '0') + (h >= 12 ? ' p.m' : ' a.m'); };
         updateTime(); setInterval(updateTime, 1000);
+        if (localStorage.getItem('rol') === 'admin') document.getElementById('nav-admin').style.display = 'block';
+
+        const cargarPerfil = () => {
+            const nombre = localStorage.getItem('nombre') || localStorage.getItem('username') || 'Usuario';
+            const foto = localStorage.getItem('foto_perfil');
+            
+            document.getElementById('display-nombre').innerText = nombre;
+            document.getElementById('nuevo_nombre').value = nombre;
+
+            const imagenEl = document.getElementById('imagenPerfil');
+            if (foto) {
+                imagenEl.src = foto;
+            } else {
+                imagenEl.src = "https://ui-avatars.com/api/?name=" + encodeURIComponent(nombre) + "&background=0b101e&color=fff&size=200";
+            }
+        };
+
+        cargarPerfil();
+
+        document.getElementById('form-perfil').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const nuevoNombre = document.getElementById('nuevo_nombre').value;
+            const nuevaFoto = document.getElementById('nueva_foto').files[0];
+
+            localStorage.setItem('nombre', nuevoNombre);
+
+            if (nuevaFoto) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    localStorage.setItem('foto_perfil', event.target.result);
+                    alert('¡Perfil actualizado con éxito!');
+                    window.location.reload();
+                };
+                reader.readAsDataURL(nuevaFoto);
+            } else {
+                alert('¡Perfil actualizado con éxito!');
+                window.location.reload();
+            }
+        });
     </script>
 </body>
 </html>
